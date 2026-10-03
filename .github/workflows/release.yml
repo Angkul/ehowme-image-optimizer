@@ -1,0 +1,48 @@
+name: Build Release ZIP
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version numbers match the tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          HEADER=$(grep -m1 -E '^\s*\*\s*Version:' ehowme-image-optimizer.php | awk '{print $NF}')
+          CONSTANT=$(grep -m1 "define( 'EHIO_VERSION'" ehowme-image-optimizer.php | sed -E "s/.*'([0-9.]+)'.*/\1/")
+          STABLE=$(grep -m1 -E '^Stable tag:' readme.txt | awk '{print $NF}')
+          echo "tag=$TAG header=$HEADER EHIO_VERSION=$CONSTANT stable=$STABLE"
+          if [ "$TAG" != "$HEADER" ] || [ "$TAG" != "$CONSTANT" ] || [ "$TAG" != "$STABLE" ]; then
+            echo "::error::Version mismatch: update the plugin header, EHIO_VERSION and readme.txt Stable tag to $TAG"
+            exit 1
+          fi
+
+      - name: Create plugin ZIP
+        run: |
+          mkdir -p build/ehowme-image-optimizer
+          rsync -a --exclude='.git' \
+                   --exclude='.github' \
+                   --exclude='.gitignore' \
+                   --exclude='.gitattributes' \
+                   --exclude='build' \
+                   --exclude='desktop.ini' \
+                   --exclude='Thumbs.db' \
+                   --exclude='.DS_Store' \
+                   ./ build/ehowme-image-optimizer/
+          cd build && zip -qr ../ehowme-image-optimizer.zip ehowme-image-optimizer
+          unzip -l ../ehowme-image-optimizer.zip | tail -1
+
+      - name: Upload ZIP to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ehowme-image-optimizer.zip
+          generate_release_notes: true

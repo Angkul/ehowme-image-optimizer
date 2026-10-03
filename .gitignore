@@ -1,0 +1,15 @@
+# Windows
+desktop.ini
+Thumbs.db
+
+# macOS
+.DS_Store
+
+# Dev tools
+node_modules/
+.idea/
+.vscode/
+
+# Local builds
+build/
+*.zip
