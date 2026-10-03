@@ -107,6 +107,9 @@ class EHIO_Admin {
 				foreach ( array_diff( $before, EHIO_Files::enabled_dirs() ) as $root ) {
 					EHIO_Files::delete_root( $root ); // Folder switched off: its copies go too.
 				}
+				if ( array_diff( EHIO_Files::enabled_dirs(), $before ) ) {
+					EHIO_Files::scan( false, false ); // Count the new folders; Start queues them.
+				}
 				$notice = EHIO_Htaccess::write() ? 'saved' : 'saved_htaccess_failed';
 				$anchor = $tab === 'advanced' ? '' : '#ehio-settings';
 				$page   = $tab === 'advanced' ? 'advanced' : '';
@@ -266,6 +269,7 @@ class EHIO_Admin {
 			EHIO_Connection::check();
 		}
 		EHIO_Queue::backfill_bytes( 60 );
+		EHIO_Files::count_unscanned();
 		$s         = EHIO_Settings::get();
 		$conn      = EHIO_Connection::get();
 		$p         = self::progress();
@@ -454,7 +458,7 @@ class EHIO_Admin {
 						<input type="hidden" name="action" value="ehio_action">
 						<input type="hidden" name="do" value="stop">
 						<?php wp_nonce_field( 'ehio_stop' ); ?>
-						<button type="submit" class="button button-hero ehio-stop" title="Take the waiting images out of the queue. Images being converted right now finish."><span class="dashicons dashicons-controls-pause" aria-hidden="true"></span>Stop</button>
+						<button type="submit" class="button button-hero ehio-stop" title="Take the waiting images out of the queue. Images being converted right now finish."><svg class="ehio-stop-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>Stop</button>
 					</form>
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="ehio-bulk-form">
 						<input type="hidden" name="action" value="ehio_action">
@@ -830,7 +834,7 @@ class EHIO_Admin {
 		.ehio .button-hero.ehio-stop{font-size:14px;min-height:42px;padding:0 18px;line-height:40px;color:var(--err);border-color:#E9B4AE;background:#fff;display:inline-flex;align-items:center;gap:6px}
 		.ehio .button-hero.ehio-stop:hover{background:var(--err-soft);border-color:var(--err);color:var(--err)}
 		.ehio .button-hero.ehio-stop:focus{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--err)}
-		.ehio-stop .dashicons{font-size:18px;width:18px;height:18px}
+		.ehio-stop-icon{fill:currentColor;flex:none;display:block}
 		.ehio-switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;color:var(--ink)}
 		.ehio-switch em{color:var(--muted);font-style:normal}
 		.ehio-switch input{position:absolute;opacity:0;width:1px;height:1px}

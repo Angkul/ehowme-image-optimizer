@@ -51,6 +51,9 @@ class EHIO_Import {
 		$files = 0;
 		$bytes = 0;
 		foreach ( self::iterate() as $file ) {
+			if ( substr( $file->getFilename(), -8 ) === '.deleted' ) {
+				continue;
+			}
 			$files++;
 			$bytes += $file->getSize();
 			if ( $files >= 500000 ) {
@@ -65,7 +68,7 @@ class EHIO_Import {
 		return $found;
 	}
 
-	/** AVIF/WebP copies under uploads-webpc (no .deleted markers). */
+	/** AVIF/WebP copies under uploads-webpc, and ".deleted" markers (copy was larger). */
 	private static function iterate() {
 		$base = self::source_dir();
 		if ( ! is_dir( $base ) ) {
@@ -73,7 +76,7 @@ class EHIO_Import {
 		}
 		$it = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $base, FilesystemIterator::SKIP_DOTS ) );
 		foreach ( $it as $file ) {
-			if ( $file->isFile() && preg_match( '/\.(avif|webp)$/i', $file->getFilename() ) ) {
+			if ( $file->isFile() && preg_match( '/\.(avif|webp)(\.deleted)?$/i', $file->getFilename() ) ) {
 				yield $file;
 			}
 		}
@@ -141,7 +144,11 @@ class EHIO_Import {
 				$finished = false;
 				break;
 			}
-			$path = wp_normalize_path( $file->getPathname() );
+			$path   = wp_normalize_path( $file->getPathname() );
+			$marker = substr( $path, -8 ) === '.deleted';
+			if ( $marker ) {
+				$path = substr( $path, 0, -8 );
+			}
 			$sub  = ltrim( substr( $path, strlen( $base ) ), '/' );          // uploads/2024/01/photo.jpg.avif
 			$root = strtok( $sub, '/' );
 			$rest = substr( $sub, strlen( $root ) + 1 );                      // 2024/01/photo.jpg.avif
@@ -149,10 +156,23 @@ class EHIO_Import {
 			$rel  = substr( $rest, 0, -strlen( $fmt ) - 1 );                  // 2024/01/photo.jpg
 			$orig = wp_normalize_path( WP_CONTENT_DIR . '/' . $root . '/' . $rel );
 
-			$ok = in_array( $root, self::ROOTS, true ) && $rel !== '' && strpos( $rel, '..' ) === false
+			$valid = in_array( $root, self::ROOTS, true ) && $rel !== '' && strpos( $rel, '..' ) === false
 				&& in_array( $fmt, $enabled, true ) && EHIO_Paths::is_source_extension( $rel )
-				&& in_array( $fmt, EHIO_Paths::target_formats( $rel ), true ) && is_file( $orig )
-				&& $file->getSize() > 0 && $file->getSize() < filesize( $orig );
+				&& in_array( $fmt, EHIO_Paths::target_formats( $rel ), true ) && is_file( $orig );
+			if ( $marker ) {
+				// Converter for Media found this copy larger than the original. Folder images whose
+				// every format is covered count as optimized (original kept), so they are not
+				// converted again. Media Library images are handled in mark_library().
+				if ( $valid && ( $root !== 'uploads' || self::outside_library( $rel, $library ) ) ) {
+					$table_rel = $root === 'uploads' ? self::site_rel( $rel ) : $rel;
+					if ( $table_rel !== null && self::covered( $root, $rel, $table_rel ) ) {
+						self::record_file( $root, $table_rel, $orig, true );
+						$state['roots'][ $root ] = true;
+					}
+				}
+				continue;
+			}
+			$ok = $valid && $file->getSize() > 0 && $file->getSize() < filesize( $orig );
 			if ( ! $ok ) {
 				$state['skipped']++;
 				continue;
@@ -215,10 +235,37 @@ class EHIO_Import {
 		return $site_rel !== null && ! isset( $library[ $site_rel ] );
 	}
 
-	private static function record_file( $root, $rel, $orig ) {
+	/**
+	 * Every format of a folder image is either in uploads-optimized, still waiting in
+	 * uploads-webpc, or marked larger by Converter for Media.
+	 * $rel is relative to the folder in uploads-webpc, $table_rel to ours (multisite offset).
+	 */
+	private static function covered( $root, $rel, $table_rel ) {
+		$base    = self::source_dir() . '/' . $root . '/' . $rel;
+		$formats = array_intersect( EHIO_Settings::get()['formats'], EHIO_Paths::target_formats( $rel ) );
+		if ( ! $formats ) {
+			return false;
+		}
+		foreach ( $formats as $format ) {
+			$ours = is_file( EHIO_Files::output_path( $root, $table_rel, $format ) );
+			if ( ! $ours && ! is_file( $base . '.' . $format ) && ! is_file( $base . '.' . $format . '.deleted' ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * A finished row in the folder table. $only_new: keep an existing row (a marker never
+	 * overrides a row that was moved or converted).
+	 */
+	private static function record_file( $root, $rel, $orig, $only_new = false ) {
 		global $wpdb;
 		$table = EHIO_Files::table();
 		$hash  = md5( $root . '|' . $rel );
+		if ( $only_new && $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE path_hash = %s", $hash ) ) ) { // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			return;
+		}
 		$size  = (int) filesize( $orig );
 		$best  = $size;
 		foreach ( EHIO_Settings::FORMATS as $format ) {
@@ -278,6 +325,7 @@ class EHIO_Import {
 				$main     = $files[ $main_rel ] ?? reset( $files );
 				$any      = false;
 				$complete = true;
+				$checked  = 0;
 				foreach ( $files as $file ) {
 					foreach ( $file['formats'] as $format ) {
 						if ( is_file( EHIO_Paths::output_path( $file['rel'], $format ) ) ) {
@@ -286,13 +334,15 @@ class EHIO_Import {
 					}
 				}
 				foreach ( array_intersect( $enabled, $main['formats'] ) as $format ) {
+					$checked++;
 					$has    = is_file( EHIO_Paths::output_path( $main['rel'], $format ) );
 					$larger = is_file( self::source_dir() . '/uploads' . EHIO_Paths::site_offset() . '/' . $main['rel'] . '.' . $format . '.deleted' );
 					if ( ! $has && ! $larger ) {
 						$complete = false;
 					}
 				}
-				if ( $any && $complete ) {
+				// Every format copied or marked larger (a small logo may have only markers).
+				if ( $checked && $complete ) {
 					update_post_meta( $id, EHIO_Queue::STATUS, 'done' );
 					update_post_meta( $id, EHIO_Queue::SIG, EHIO_Queue::signature( $id ) );
 					update_post_meta( $id, EHIO_Queue::MESSAGE, 'Imported from Converter for Media' );
@@ -315,6 +365,7 @@ class EHIO_Import {
 			EHIO_Settings::update( array( 'dirs' => array_values( array_unique( array_merge( $dirs, $roots ) ) ) ) );
 		}
 		EHIO_Htaccess::write();
+		EHIO_Files::scan( false, false ); // Count what is left in those folders ("not optimized yet").
 		if ( $state['queued'] ) {
 			EHIO_Notifier::ping();
 		}

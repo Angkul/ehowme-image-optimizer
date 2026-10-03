@@ -192,13 +192,22 @@ class EHIO_Files {
 	 *
 	 * @return array{queued:int, counts:array<string,int>}
 	 */
-	public static function scan( $force = false ) {
+	/**
+	 * Syncs the enabled folders with the table.
+	 *
+	 * @param bool $force Queue every file again ("Convert optimized images again").
+	 * @param bool $queue false = only count: new or changed files become 'idle'
+	 *                    ("not optimized yet") until bulk optimization queues them.
+	 * @return array{queued:int, counts:array}
+	 */
+	public static function scan( $force = false, $queue = true ) {
 		global $wpdb;
 		self::install();
-		$table   = self::table();
-		$enabled = self::enabled_dirs();
-		$queued  = 0;
-		$counts  = array();
+		$table     = self::table();
+		$enabled   = self::enabled_dirs();
+		$new_state = $queue ? 'pending' : 'idle';
+		$queued    = 0;
+		$counts    = array();
 
 		// Folders that were switched off: forget them and delete their copies.
 		$known = $wpdb->get_col( "SELECT DISTINCT root FROM {$table}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -229,29 +238,40 @@ class EHIO_Files {
 							'path_hash' => md5( $root . '|' . $rel ),
 							'bytes'     => $info[0],
 							'sig'       => $sig,
-							'status'    => 'pending',
+							'status'    => $new_state,
 						)
 					);
-					$queued++;
+					$queued += $queue ? 1 : 0;
 					continue;
 				}
 				$row = $existing[ $rel ];
 				unset( $existing[ $rel ] );
-				if ( $force || $row->sig !== $sig || $row->status === 'idle' ) {
-					$wpdb->update(
-						$table,
-						array(
-							'bytes'    => $info[0],
-							'sig'      => $sig,
-							'status'   => 'pending',
-							'lease'    => 0,
-							'attempts' => 0,
-							'message'  => '',
-						),
-						array( 'id' => $row->id )
-					);
-					$queued++;
+				$changed = $row->sig !== $sig;
+				// Only what is not optimized yet, unless "convert again" ($force) is on.
+				$requeue = $queue && ( $force || $row->status === 'idle' );
+				if ( ! $changed && ! $requeue ) {
+					continue;
 				}
+				if ( $row->status === 'processing' && ! $changed ) {
+					continue; // The worker has it right now.
+				}
+				$state = $new_state;
+				if ( ! $queue && in_array( $row->status, array( 'pending', 'processing' ), true ) ) {
+					$state = 'pending'; // A count-only scan never takes a file out of the queue.
+				}
+				$wpdb->update(
+					$table,
+					array(
+						'bytes'    => $info[0],
+						'sig'      => $sig,
+						'status'   => $state,
+						'lease'    => 0,
+						'attempts' => 0,
+						'message'  => '',
+					),
+					array( 'id' => $row->id )
+				);
+				$queued += $queue ? 1 : 0;
 			}
 			foreach ( $existing as $rel => $row ) { // Files that are gone.
 				self::delete_outputs( $root, $rel );
@@ -270,6 +290,17 @@ class EHIO_Files {
 			'queued' => $queued,
 			'counts' => $counts,
 		);
+	}
+
+	/** Counts enabled folders that were never scanned, so "Not optimized yet" is right before Start. */
+	public static function count_unscanned() {
+		$scan = get_option( 'ehio_scan', array() );
+		foreach ( self::enabled_dirs() as $root ) {
+			if ( ! isset( $scan['counts'][ $root ] ) ) {
+				self::scan( false, false );
+				return;
+			}
+		}
 	}
 
 	public static function delete_root( $root ) {

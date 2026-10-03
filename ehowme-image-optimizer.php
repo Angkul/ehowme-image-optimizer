@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       eHowMe Image Optimizer
  * Description:       Serves AVIF and WebP versions of your images to browsers that support them, with the original as fallback, so pages load faster without changing any URLs. Images are converted on your own eHowMe worker server, not on this hosting account. Covers the Media Library, Elementor thumbnails, theme and plugin images, with bulk optimization, per-image control and Cloudflare-friendly delivery.
- * Version:           1.0.6
+ * Version:           1.0.7
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            eHowMe
@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'EHIO_VERSION', '1.0.6' );
+define( 'EHIO_VERSION', '1.0.7' );
 define( 'EHIO_FILE', __FILE__ );
 define( 'EHIO_DIR', plugin_dir_path( __FILE__ ) );
 
