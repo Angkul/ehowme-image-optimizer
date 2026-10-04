@@ -1,7 +1,7 @@
 === eHowMe Image Optimizer ===
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.0.7
+Stable tag: 1.0.8
 License: GPL-2.0-or-later
 
 Serves AVIF/WebP versions of uploaded JPEG/PNG images, and AVIF versions of WebP uploads. Conversion happens on your own
@@ -135,6 +135,9 @@ The GitHub Action builds ehowme-image-optimizer.zip and attaches it to the relea
 It refuses to build when the tag and the version numbers in the files disagree.
 
 == Changelog ==
+
+= 1.0.8 =
+* Shorter plugin description on the Plugins screen.
 
 = 1.0.7 =
 * Start bulk optimization converts only images that are not optimized yet; turn on "Convert optimized images again" to redo all.
