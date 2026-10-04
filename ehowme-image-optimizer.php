@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       eHowMe Image Optimizer
- * Description:       Serves AVIF and WebP versions of your images, converted on your own eHowMe worker server.
+ * Description:       Faster pages with lighter images: eHowMe serves WebP and AVIF versions automatically, no URL changes needed.
  * Version:           1.0.8
  * Requires at least: 6.0
  * Requires PHP:      7.4
