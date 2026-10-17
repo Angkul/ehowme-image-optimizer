@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       eHowMe Image Optimizer
  * Description:       Faster pages with lighter images: eHowMe serves WebP and AVIF versions automatically, no URL changes needed.
- * Version:           1.0.8
+ * Version:           1.0.9
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            eHowMe
@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'EHIO_VERSION', '1.0.8' );
+define( 'EHIO_VERSION', '1.0.9' );
 define( 'EHIO_FILE', __FILE__ );
 define( 'EHIO_DIR', plugin_dir_path( __FILE__ ) );
 
@@ -41,6 +41,7 @@ function ehio_activate() {
 	EHIO_Files::install();
 	wp_mkdir_p( EHIO_Paths::optimized_root_dir() );
 	EHIO_Htaccess::write();
+	EHIO_Cleanup::schedule_prune();
 	update_option( 'ehio_rules_version', EHIO_VERSION, false );
 }
 
@@ -48,6 +49,7 @@ function ehio_activate() {
 function ehio_maybe_upgrade() {
 	if ( get_option( 'ehio_rules_version' ) !== EHIO_VERSION ) {
 		EHIO_Files::install();
+		EHIO_Cleanup::schedule_prune(); // 1.0.9: remove AVIF copies heavier than their WebP.
 		if ( EHIO_Htaccess::write() ) {
 			update_option( 'ehio_rules_version', EHIO_VERSION, false );
 		}

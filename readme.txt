@@ -1,7 +1,7 @@
 === eHowMe Image Optimizer ===
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.0.8
+Stable tag: 1.0.9
 License: GPL-2.0-or-later
 
 Serves AVIF/WebP versions of uploaded JPEG/PNG images, and AVIF versions of WebP uploads. Conversion happens on your own
@@ -135,6 +135,10 @@ The GitHub Action builds ehowme-image-optimizer.zip and attaches it to the relea
 It refuses to build when the tag and the version numbers in the files disagree.
 
 == Changelog ==
+
+= 1.0.9 =
+* An AVIF copy that is not smaller than the WebP copy is no longer kept: browsers that take AVIF get the lighter WebP instead.
+* After the update, existing AVIF copies heavier than their WebP are removed in the background. To do it now: Advanced tab › "Remove heavier AVIF copies" (or `wp ehio prune-avif`).
 
 = 1.0.8 =
 * Shorter plugin description on the Plugins screen.

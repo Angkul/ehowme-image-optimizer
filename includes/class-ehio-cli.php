@@ -137,6 +137,22 @@ class EHIO_CLI {
 	}
 
 	/**
+	 * Remove AVIF copies that are not smaller than their WebP copy (browsers that take
+	 * AVIF then get the lighter WebP). Runs once by itself after updating to 1.0.9.
+	 *
+	 * ## EXAMPLES
+	 *     wp ehio prune-avif
+	 *
+	 * @subcommand prune-avif
+	 */
+	public function prune_avif() {
+		$result = EHIO_Cleanup::prune();
+		update_option( EHIO_Cleanup::PRUNE_OPTION, time(), false );
+		WP_CLI::success( sprintf( 'Checked %d AVIF copies, removed %d that were not smaller than their WebP (%s).',
+			$result['checked'], $result['removed'], size_format( $result['bytes'] ) ) );
+	}
+
+	/**
 	 * Write (or rewrite) the .htaccess delivery rules.
 	 *
 	 * ## EXAMPLES

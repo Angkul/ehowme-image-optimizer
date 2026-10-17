@@ -137,6 +137,16 @@ class EHIO_Admin {
 				EHIO_Notifier::ping();
 				$anchor = '#ehio-bulk';
 				break;
+			case 'prune_avif':
+				$r = EHIO_Cleanup::prune( EHIO_Cleanup::PRUNE_BUDGET );
+				if ( $r['complete'] ) {
+					update_option( EHIO_Cleanup::PRUNE_OPTION, time(), false );
+				} elseif ( ! wp_next_scheduled( EHIO_Cleanup::PRUNE_HOOK ) ) {
+					wp_schedule_single_event( time() + 60, EHIO_Cleanup::PRUNE_HOOK ); // Finish the rest in the background.
+				}
+				$notice = 'pruned:' . $r['checked'] . ':' . $r['removed'] . ':' . $r['bytes'] . ':' . ( $r['complete'] ? 1 : 0 );
+				$page   = 'advanced';
+				break;
 			case 'htaccess':
 				$notice = EHIO_Htaccess::write() ? 'htaccess_ok' : 'htaccess_failed';
 				$page   = ! empty( $_GET['tab'] ) && $_GET['tab'] === 'advanced' ? 'advanced' : '';
@@ -181,6 +191,16 @@ class EHIO_Admin {
 			return $n
 				? array( 'success', sprintf( _n( 'Stopped. %d image was taken out of the queue. Images already being converted finish; press Start bulk optimization to continue later.', 'Stopped. %d images were taken out of the queue. Images already being converted finish; press Start bulk optimization to continue later.', $n, 'ehowme-image-optimizer' ), $n ) )
 				: array( 'info', 'Nothing was waiting in the queue.' );
+		}
+		if ( strpos( $code, 'pruned:' ) === 0 ) {
+			list( , $checked, $removed, $bytes, $complete ) = array_pad( explode( ':', $code ), 5, 0 );
+			$text = (int) $removed
+				? sprintf( 'Removed %1$s AVIF copies that were not smaller than their WebP (%2$s). Browsers that take AVIF now get the lighter WebP for those images.', number_format_i18n( (int) $removed ), size_format( (int) $bytes ) )
+				: sprintf( 'Checked %s AVIF copies: all are smaller than their WebP. Nothing to remove.', number_format_i18n( (int) $checked ) );
+			if ( ! (int) $complete ) {
+				$text .= ' The rest are being checked in the background.';
+			}
+			return array( 'success', $text );
 		}
 		if ( strpos( $code, 'retried:' ) === 0 ) {
 			return array( 'success', sprintf( '%d failed images sent back to the queue.', (int) substr( $code, 8 ) ) );
@@ -677,6 +697,25 @@ class EHIO_Admin {
 						<summary>nginx configuration (servers that ignore .htaccess)</summary>
 						<textarea readonly rows="12" class="widefat code"><?php echo esc_textarea( EHIO_Htaccess::nginx_snippet() ); ?></textarea>
 					</details>
+				</div>
+			</div>
+
+			<?php
+			$pruned  = (int) get_option( EHIO_Cleanup::PRUNE_OPTION, 0 );
+			$pending = (bool) wp_next_scheduled( EHIO_Cleanup::PRUNE_HOOK );
+			?>
+			<div class="ehio-field">
+				<div class="ehio-label"><h3>Heavier AVIF copies</h3><p>Browsers that take AVIF get it before WebP, so an AVIF that is not smaller than its WebP makes pages heavier.</p></div>
+				<div class="ehio-control">
+					<p class="ehio-state <?php echo $pruned ? 'is-ok' : 'is-warn'; ?>"><i></i><?php
+					if ( $pruned ) {
+						printf( 'Checked %s ago', esc_html( human_time_diff( $pruned ) ) );
+					} else {
+						echo $pending ? 'Checking in the background…' : 'Not checked yet';
+					}
+					?></p>
+					<p class="ehio-hint">New conversions never keep such a copy. This removes the ones converted before (Media Library and other folders), so the lighter WebP is served instead. It also runs once by itself after the update, and is safe to run again.</p>
+					<p><a class="button" href="<?php echo esc_url( add_query_arg( 'tab', 'advanced', self::action_url( 'prune_avif' ) ) ); ?>">Remove heavier AVIF copies</a></p>
 				</div>
 			</div>
 

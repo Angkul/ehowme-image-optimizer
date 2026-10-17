@@ -329,6 +329,11 @@ class EHIO_Rest {
 		if ( self::detect_format( $tmp_name ) !== $format ) {
 			return new WP_Error( 'ehio_bad_type', 'File content does not match the declared format.', array( 'status' => 415 ) );
 		}
+		// AVIF is served first, so it must also beat the WebP copy (older workers send both).
+		$base = substr( $dest, 0, -strlen( $format ) - 1 );
+		if ( $format === 'avif' && EHIO_Cleanup::webp_enabled() && is_file( $base . '.webp' ) && $size >= (int) filesize( $base . '.webp' ) ) {
+			return new WP_Error( 'ehio_not_smaller', 'AVIF copy is not smaller than the WebP copy.', array( 'status' => 422 ) );
+		}
 		if ( ! wp_mkdir_p( dirname( $dest ) ) ) {
 			return new WP_Error( 'ehio_mkdir', 'Output folder is not writable.', array( 'status' => 500 ) );
 		}
@@ -343,6 +348,9 @@ class EHIO_Rest {
 			return new WP_Error( 'ehio_write', 'Could not write the output file.', array( 'status' => 500 ) );
 		}
 		@chmod( $dest, defined( 'FS_CHMOD_FILE' ) ? FS_CHMOD_FILE : 0644 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		if ( $format === 'webp' ) {
+			EHIO_Cleanup::drop_heavier_avif( $base . '.avif', $dest );
+		}
 		return $size;
 	}
 
