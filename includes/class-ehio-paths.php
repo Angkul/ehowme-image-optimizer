@@ -113,9 +113,12 @@ class EHIO_Paths {
 	 * Every JPEG/PNG/WebP file that belongs to an attachment (full, original_image, sizes),
 	 * keyed by uploads-relative path. Only files that exist on disk are returned.
 	 *
+	 * Sizes smaller than the "Small sizes" setting are left out; with $with_small they are
+	 * listed with no formats and 'small' => true, so their old copies can be removed.
+	 *
 	 * @return array<string, array{rel:string,url:string,bytes:int,formats:string[]}>
 	 */
-	public static function attachment_files( $attachment_id ) {
+	public static function attachment_files( $attachment_id, $with_small = false ) {
 		if ( ! in_array( get_post_mime_type( $attachment_id ), self::SOURCE_MIMES, true ) ) {
 			return array();
 		}
@@ -130,13 +133,21 @@ class EHIO_Paths {
 		if ( ! empty( $meta['original_image'] ) ) {
 			$names[] = wp_basename( $meta['original_image'] );
 		}
+		$min   = (int) EHIO_Settings::get()['min_size'];
+		$small = array();
 		if ( ! empty( $meta['sizes'] ) && is_array( $meta['sizes'] ) ) {
 			foreach ( $meta['sizes'] as $size ) {
 				if ( ! empty( $size['file'] ) ) {
-					$names[] = wp_basename( $size['file'] );
+					$name    = wp_basename( $size['file'] );
+					$names[] = $name;
+					$longest = max( (int) ( $size['width'] ?? 0 ), (int) ( $size['height'] ?? 0 ) );
+					if ( $min && $longest && $longest < $min ) {
+						$small[ $name ] = true;
+					}
 				}
 			}
 		}
+		$small = array_diff_key( $small, array( wp_basename( $meta['file'] ) => 1 ) ); // Never skip the main file.
 
 		$baseurl = untrailingslashit( self::upload_dir()['baseurl'] );
 		$files   = array();
@@ -153,12 +164,19 @@ class EHIO_Paths {
 			if ( ! $formats ) {
 				continue;
 			}
+			$is_small = isset( $small[ $name ] );
+			if ( $is_small && ! $with_small ) {
+				continue;
+			}
 			$files[ $rel ] = array(
 				'rel'     => $rel,
 				'url'     => $baseurl . '/' . implode( '/', array_map( 'rawurlencode', explode( '/', $rel ) ) ),
 				'bytes'   => (int) filesize( $abs ),
-				'formats' => $formats,
+				'formats' => $is_small ? array() : $formats,
 			);
+			if ( $is_small ) {
+				$files[ $rel ]['small'] = true;
+			}
 		}
 		return $files;
 	}

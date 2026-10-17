@@ -102,13 +102,18 @@ class EHIO_Admin {
 			case 'save':
 				$input  = isset( $_POST['ehio'] ) && is_array( $_POST['ehio'] ) ? wp_unslash( $_POST['ehio'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- sanitized in sanitize_form().
 				$tab    = isset( $_POST['tab'] ) && $_POST['tab'] === 'advanced' ? 'advanced' : 'general';
-				$before = EHIO_Files::enabled_dirs();
+				$before    = EHIO_Files::enabled_dirs();
+				$min_was   = (int) EHIO_Settings::get()['min_size'];
 				EHIO_Settings::update( $tab === 'advanced' ? EHIO_Settings::sanitize_advanced( $input ) : EHIO_Settings::sanitize_form( $input ) );
 				foreach ( array_diff( $before, EHIO_Files::enabled_dirs() ) as $root ) {
 					EHIO_Files::delete_root( $root ); // Folder switched off: its copies go too.
 				}
 				if ( array_diff( EHIO_Files::enabled_dirs(), $before ) ) {
 					EHIO_Files::scan( false, false ); // Count the new folders; Start queues them.
+				}
+				$min_now = (int) EHIO_Settings::get()['min_size'];
+				if ( $min_now && ( ! $min_was || $min_now > $min_was ) ) {
+					EHIO_Cleanup::schedule_small(); // Remove copies of the sizes now skipped, in the background.
 				}
 				$notice = EHIO_Htaccess::write() ? 'saved' : 'saved_htaccess_failed';
 				$anchor = $tab === 'advanced' ? '' : '#ehio-settings';
@@ -138,9 +143,14 @@ class EHIO_Admin {
 				$anchor = '#ehio-bulk';
 				break;
 			case 'prune_avif':
-				$r = EHIO_Cleanup::prune( EHIO_Cleanup::PRUNE_BUDGET );
+				$r = EHIO_Cleanup::prune( EHIO_Cleanup::budget() );
+				if ( $r['locked'] ) {
+					$notice = 'err:A check is already running. Try again in a minute or two.';
+					$page   = 'advanced';
+					break;
+				}
 				if ( $r['complete'] ) {
-					update_option( EHIO_Cleanup::PRUNE_OPTION, time(), false );
+					update_option( EHIO_Cleanup::PRUNE_OPTION, time(), true );
 				} elseif ( ! wp_next_scheduled( EHIO_Cleanup::PRUNE_HOOK ) ) {
 					wp_schedule_single_event( time() + 60, EHIO_Cleanup::PRUNE_HOOK ); // Finish the rest in the background.
 				}
@@ -604,6 +614,18 @@ class EHIO_Admin {
 			</div>
 
 			<div class="ehio-field">
+				<div class="ehio-label"><h3>Small sizes</h3><p>Tiny thumbnails save only a few KB each but still add files on disk. Hosting plans limit the number of files (inodes) as well as space.</p></div>
+				<div class="ehio-control">
+					<select name="ehio[min_size]">
+						<option value="0" <?php selected( (int) $s['min_size'], 0 ); ?>>Convert every size</option>
+						<option value="200" <?php selected( (int) $s['min_size'], 200 ); ?>>Skip sizes under 200 px (thumbnails)</option>
+						<option value="400" <?php selected( (int) $s['min_size'], 400 ); ?>>Skip sizes under 400 px (thumbnails and small sizes)</option>
+					</select>
+					<p class="ehio-hint">Measured on the longer side, for Media Library sizes. Skipped sizes are served as the original. Copies already made for them are removed in the background after you save.</p>
+				</div>
+			</div>
+
+			<div class="ehio-field">
 				<div class="ehio-label"><h3>New images</h3><p>What happens when an image is uploaded, edited or its sizes are regenerated.</p></div>
 				<div class="ehio-control">
 					<label class="ehio-switch"><input type="checkbox" name="ehio[auto_convert]" value="1" <?php checked( ! empty( $s['auto_convert'] ) ); ?>><span></span>Convert automatically right after upload</label>
@@ -632,7 +654,13 @@ class EHIO_Admin {
 			<?php
 			return;
 		}
-		if ( ! $connected || ! $p['queue'] || ( $last_seen && time() - $last_seen < 15 * MINUTE_IN_SECONDS ) ) {
+		// Images wait and the worker has been quiet a while (it checks idle sites only every
+		// 30 minutes): nudge it now, at most every 5 minutes.
+		if ( $connected && $p['queue'] && time() - $last_seen > 5 * MINUTE_IN_SECONDS && ! get_transient( 'ehio_nudged' ) ) {
+			set_transient( 'ehio_nudged', 1, 5 * MINUTE_IN_SECONDS );
+			EHIO_Notifier::ping();
+		}
+		if ( ! $connected || ! $p['queue'] || ( $last_seen && time() - $last_seen < 45 * MINUTE_IN_SECONDS ) ) {
 			return;
 		}
 		?>

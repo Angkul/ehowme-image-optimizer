@@ -147,7 +147,10 @@ class EHIO_CLI {
 	 */
 	public function prune_avif() {
 		$result = EHIO_Cleanup::prune();
-		update_option( EHIO_Cleanup::PRUNE_OPTION, time(), false );
+		if ( $result['locked'] ) {
+			WP_CLI::error( 'A check is already running (background or button). Try again in a minute or two.' );
+		}
+		update_option( EHIO_Cleanup::PRUNE_OPTION, time(), true );
 		WP_CLI::success( sprintf( 'Checked %d AVIF copies, removed %d that were not smaller than their WebP (%s).',
 			$result['checked'], $result['removed'], size_format( $result['bytes'] ) ) );
 	}
@@ -235,10 +238,14 @@ class EHIO_CLI {
 		$current = EHIO_Settings::get();
 		EHIO_Settings::update(
 			EHIO_Settings::sanitize_form(
-				array(
-					'formats'      => isset( $assoc_args['formats'] ) ? explode( ',', $assoc_args['formats'] ) : $current['formats'],
-					'quality_webp' => $assoc_args['quality-webp'] ?? $current['quality_webp'],
-					'quality_avif' => $assoc_args['quality-avif'] ?? $current['quality_avif'],
+				// Keep every other setting as it is (strategy, sizes, folders...).
+				array_merge(
+					$current,
+					array(
+						'formats'      => isset( $assoc_args['formats'] ) ? explode( ',', $assoc_args['formats'] ) : $current['formats'],
+						'quality_webp' => $assoc_args['quality-webp'] ?? $current['quality_webp'],
+						'quality_avif' => $assoc_args['quality-avif'] ?? $current['quality_avif'],
+					)
 				)
 			)
 		);

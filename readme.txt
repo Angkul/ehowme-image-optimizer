@@ -1,7 +1,7 @@
 === eHowMe Image Optimizer ===
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.0.9
+Stable tag: 1.1.0
 License: GPL-2.0-or-later
 
 Serves AVIF/WebP versions of uploaded JPEG/PNG images, and AVIF versions of WebP uploads. Conversion happens on your own
@@ -135,6 +135,12 @@ The GitHub Action builds ehowme-image-optimizer.zip and attaches it to the relea
 It refuses to build when the tag and the version numbers in the files disagree.
 
 == Changelog ==
+
+= 1.1.0 =
+* New setting "Small sizes": skip thumbnails under 200 or 400 px to keep fewer files on hosting plans with a file (inode) limit. Copies already made for those sizes are removed in the background.
+* Removing heavier AVIF copies is lighter on big sites: it lists folders only, works folder by folder and carries on where it stopped, runs one at a time, and keeps within the host's PHP time limit.
+* The settings page wakes the worker when images wait, and warns about a stuck queue after 45 minutes instead of 15 (the worker now checks idle sites every 30 minutes).
+* `wp ehio config` no longer resets the other settings.
 
 = 1.0.9 =
 * An AVIF copy that is not smaller than the WebP copy is no longer kept: browsers that take AVIF get the lighter WebP instead.

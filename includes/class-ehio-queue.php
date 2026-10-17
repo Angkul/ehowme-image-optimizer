@@ -218,7 +218,8 @@ class EHIO_Queue {
 		}
 		if ( $status === 'done' ) {
 			$claimed = (int) get_post_meta( $attachment_id, self::CLAIMED, true );
-			foreach ( EHIO_Paths::attachment_files( $attachment_id ) as $file ) {
+			// Small sizes skipped by the setting come with no formats, so their old copies go too.
+			foreach ( EHIO_Paths::attachment_files( $attachment_id, true ) as $file ) {
 				foreach ( EHIO_Settings::FORMATS as $format ) {
 					$path = EHIO_Paths::output_path( $file['rel'], $format );
 					if ( is_file( $path ) && ( filemtime( $path ) < $claimed || ! in_array( $format, $file['formats'], true ) ) ) {

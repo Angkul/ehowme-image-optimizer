@@ -34,6 +34,9 @@ class EHIO_Settings {
 		),
 	);
 
+	/** Choices for "Small sizes": tiny thumbnails save little and cost files on disk. */
+	const MIN_SIZES = array( 0, 200, 400 );
+
 	/** Folders under wp-content that can be converted besides the Media Library. */
 	const EXTRA_DIRS = array( 'uploads', 'themes', 'plugins', 'gallery', 'cache' );
 
@@ -49,6 +52,8 @@ class EHIO_Settings {
 			'quality_avif' => 50,
 			'max_width'    => 0,
 			'max_height'   => 0,
+			// Sizes smaller than this on their longer side get no copies (0 = convert every size).
+			'min_size'     => 0,
 			'auto_convert' => true,
 			// Extra folders scanned by Bulk optimization ('uploads' = files in uploads
 			// that are not Media Library items, e.g. Elementor thumbnails).
@@ -193,6 +198,7 @@ class EHIO_Settings {
 			'quality_avif' => min( 100, max( 1, (int) ( $input['quality_avif'] ?? 50 ) ) ),
 			'max_width'    => min( 20000, max( 0, (int) ( $input['max_width'] ?? 0 ) ) ),
 			'max_height'   => min( 20000, max( 0, (int) ( $input['max_height'] ?? 0 ) ) ),
+			'min_size'     => in_array( (int) ( $input['min_size'] ?? 0 ), self::MIN_SIZES, true ) ? (int) $input['min_size'] : 0,
 			'auto_convert' => ! empty( $input['auto_convert'] ),
 			'dirs'         => $dirs,
 		);
